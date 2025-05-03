@@ -27,9 +27,6 @@ model_options = {
 selected_model_name = st.sidebar.selectbox("Select Model", list(model_options.keys()))
 model_path = model_options[selected_model_name]
 
-# Confidence threshold
-confidence_threshold = st.sidebar.slider("Confidence Threshold", 0.0, 1.0, 0.5, 0.05)
-
 # Load model
 @st.cache_resource
 def load_model(path):
@@ -91,10 +88,9 @@ with st.expander("About this App"):
     #### Features:
     - Upload an image to detect Dry Fish 
     - Bounding boxes highlight Dry Fish 
-    - Adjustable confidence threshold
 
     #### How it works:
-    The model scans the image for Dry Fish and draws red boxes with confidence scores.
+    The model scans the image for Dry Fish and draws  boxes.
 
     #### Use cases:
     - Road quality reporting
