@@ -3,3 +3,4 @@ ultralytics
 opencv-python-headless  # OpenCV without GUI to avoid display issues
 numpy
 Pillow
+torchcam>=0.4.0
