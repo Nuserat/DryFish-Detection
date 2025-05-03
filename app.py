@@ -8,7 +8,7 @@ from ultralytics import YOLO
 # Set page configuration
 st.set_page_config(
     page_title="Dry Fish Detection",
-    page_icon=" ",
+    page_icon="🐟",
     layout="wide"
 )
 
@@ -16,18 +16,17 @@ st.set_page_config(
 st.title("Dry Fish Detection using YOLOv8")
 st.sidebar.title("⚙️ Settings")
 
+# Model selection dropdown
 model_options = {
     "YOLOv9": "yolov9.pt",
     "YOLOv10": "yolov10.pt",
     "YOLOv11": "yolov11.pt",
     "YOLOv12": "yolov12.pt"
 }
-
-# Model selection
 selected_model_name = st.sidebar.selectbox("Select Model", list(model_options.keys()))
 model_path = model_options[selected_model_name]
 
-# Load model
+# Load YOLO model with caching
 @st.cache_resource
 def load_model(path):
     return YOLO(path)
@@ -35,11 +34,7 @@ def load_model(path):
 model = load_model(model_path)
 st.success(f"✅ Model `{model_path}` loaded successfully.")
 
-# Image upload section
-st.subheader("📷 Upload an Image to Detect Dry Fish")
-uploaded_file = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
-
-# Function to draw bounding boxes
+# Draw bounding boxes around detections
 def draw_boxes(image, results):
     annotated_img = image.copy()
     if results and len(results.boxes) > 0:
@@ -53,47 +48,51 @@ def draw_boxes(image, results):
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
     return annotated_img
 
-# Detection
+# Image upload section
+st.subheader("📷 Upload an Image to Detect Dry Fish")
+uploaded_file = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
+
 if uploaded_file is not None:
     image = Image.open(uploaded_file).convert("RGB")
     image_np = np.array(image)
 
     if st.button("🔍 Detect Dry Fish"):
         with st.spinner("Processing..."):
-            results = model(image_np, conf=confidence_threshold)
-            result_image = draw_boxes(image_np, results[0])
+            try:
+                results = model(image_np)
+                result_image = draw_boxes(image_np, results[0])
 
-            col1, col2 = st.columns(2)
-            with col1:
-                st.subheader("Original Image")
-                st.image(image, use_column_width=True)
-            with col2:
-                st.subheader("Detection Result")
-                st.image(result_image, use_column_width=True)
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.subheader("Original Image")
+                    st.image(image, use_column_width=True)
+                with col2:
+                    st.subheader("Detection Result")
+                    st.image(result_image, use_column_width=True)
 
-            count = len(results[0].boxes)
-            if count > 0:
-                st.success(f"Detected {count} pothole(s).")
-            else:
-                st.info("No Dry Fish detected.")
-
-
+                count = len(results[0].boxes)
+                if count > 0:
+                    st.success(f"Detected {count} Dry Fish instance(s).")
+                else:
+                    st.info("No Dry Fish detected.")
+            except Exception as e:
+                st.error(f"Error during detection: {e}")
 
 # About section
 with st.expander("About this App"):
     st.write("""
-    ### Dry Fish  Detection App (Image Upload Only)
-    This app uses a YOLOv8 model trained for Dry Fish  detection.
+    ### Dry Fish Detection App (Image Upload Only)
+    This app uses a YOLOv8 model trained for detecting dry fish from images.
 
     #### Features:
-    - Upload an image to detect Dry Fish 
-    - Bounding boxes highlight Dry Fish 
+    - Upload an image for dry fish detection
+    - Bounding boxes with confidence scores
 
     #### How it works:
-    The model scans the image for Dry Fish and draws  boxes.
+    The model processes the uploaded image and detects regions containing dry fish using pre-trained YOLO weights.
 
     #### Use cases:
-    - Road quality reporting
-    - Civil engineering
-    - Research and development
+    - Quality control in seafood processing
+    - Marine life classification
+    - Research and monitoring in fisheries
     """)
