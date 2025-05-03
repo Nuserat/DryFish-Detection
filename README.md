@@ -40,8 +40,7 @@ streamlit run app.py
 
 ## Folder Structure
 ```
-📂 dry-fish-classification
-│── 📄 app.py  # Main application file
+📂 dry-fish-Detection
 │── 📄 best.pth  # Trained model
 │── 📂 models  # Contains model-related scripts
 │── 📂 static  # Static assets like images, CSS
