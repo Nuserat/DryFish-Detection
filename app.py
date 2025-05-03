@@ -13,7 +13,7 @@ st.set_page_config(
 )
 
 # Title of the app
-st.title("Dry Fish Detection using YOLOv8")
+st.title("Dry Fish Detection using YOLOv Models")
 st.sidebar.title("⚙️ Settings")
 
 # Model selection dropdown
@@ -82,7 +82,7 @@ if uploaded_file is not None:
 with st.expander("About this App"):
     st.write("""
     ### Dry Fish Detection App (Image Upload Only)
-    This app uses a YOLOv8 model trained for detecting dry fish from images.
+    This app uses a YOLOv Models trained for detecting dry fish from images.
 
     #### Features:
     - Upload an image for dry fish detection
