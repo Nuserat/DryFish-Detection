@@ -13,23 +13,36 @@ st.set_page_config(
 
 # Title of the app
 st.title("Dry Fish  Detection using YOLOv8")
+st.sidebar.title("⚙️ Settings")
 
-# Fix for torch.classes error
-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+# Allow user to select from multiple models
+model_options = {
+    "YOLOv8 Small": "yolov8s.pt",
+    "YOLOv8 Medium": "yolov8m.pt",
+    "Custom Trained (Potholes)": "best.pt"
+}
 
-# Load model with caching
+
+model_choice = st.sidebar.selectbox("Select Model Type", list(model_options.keys()))
+model_path = model_options[model_choice]
+
+# Confidence slider
+confidence_threshold = st.sidebar.slider("Confidence Threshold", 0.0, 1.0, 0.5, 0.05)
+
+# Load the selected model
 @st.cache_resource
-def load_model():
-    try:
-        from ultralytics import YOLO
-        return YOLO("best.pt")  # Ensure best.pt is in your project directory
-    except Exception as e:
-        st.error(f"Failed to load model: {e}")
-        return None
+def load_model(path):
+    return YOLO(path)
 
-model = load_model()
+model = load_model(model_path)
 
-# Draw bounding boxes on image
+st.success(f"✅ Model `{model_path}` loaded successfully.")
+
+# Upload image section
+st.subheader("📷 Upload an Image to Detect Potholes")
+uploaded_file = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
+
+# Function to draw boxes
 def draw_boxes(image, results):
     annotated_img = image.copy()
 
@@ -37,54 +50,36 @@ def draw_boxes(image, results):
         for box in results.boxes:
             x1, y1, x2, y2 = map(int, box.xyxy[0])
             conf = float(box.conf[0])
+            label = f"Pothole: {conf:.2f}"
 
-            # Draw red rectangle (bounding box)
             cv2.rectangle(annotated_img, (x1, y1), (x2, y2), (0, 0, 255), 2)
-
-            # Add confidence label
-            label = f"Dry Fish : {conf:.2f}"
             cv2.putText(annotated_img, label, (x1, y1 - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+
     return annotated_img
-
-# Sidebar settings
-st.sidebar.title("Settings")
-confidence_threshold = st.sidebar.slider("Confidence Threshold", 0.0, 1.0, 0.5, 0.05)
-
-# Image upload section
-st.subheader("Upload an Image for Dry Fish  Detection")
-uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
     image = Image.open(uploaded_file).convert("RGB")
     image_np = np.array(image)
 
-    if st.button("Detect Dry Fish "):
-        if model:
-            with st.spinner("Processing image..."):
-                try:
-                    results = model(image_np, conf=confidence_threshold)
-                    result_image = draw_boxes(image_np, results[0])
+    if st.button("🔍 Detect Potholes"):
+        with st.spinner("Processing..."):
+            results = model(image_np, conf=confidence_threshold)
+            result_image = draw_boxes(image_np, results[0])
 
-                    # Display results
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.subheader("Original Image")
-                        st.image(image, use_column_width=True)
-                    with col2:
-                        st.subheader("Detection Results")
-                        st.image(result_image, use_column_width=True)
+            col1, col2 = st.columns(2)
+            with col1:
+                st.subheader("Original Image")
+                st.image(image, use_column_width=True)
+            with col2:
+                st.subheader("Detection Result")
+                st.image(result_image, use_column_width=True)
 
-                    # Detection count
-                    count = len(results[0].boxes)
-                    if count > 0:
-                        st.success(f"Detected {count} Dry Fish (s)")
-                    else:
-                        st.info("No Dry Fish  detected in this image.")
-                except Exception as e:
-                    st.error(f"Error processing image: {e}")
-        else:
-            st.error("Model failed to load. Please refresh the page.")
+            count = len(results[0].boxes)
+            if count > 0:
+                st.success(f"Detected {count} pothole(s).")
+            else:
+                st.info("No potholes detected.")
 
 # About section
 with st.expander("About this App"):
