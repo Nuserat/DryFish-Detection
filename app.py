@@ -3,6 +3,7 @@ import os
 import cv2
 import numpy as np
 from PIL import Image
+from ultralytics import YOLO
 
 # Set page configuration
 st.set_page_config(
@@ -12,57 +13,55 @@ st.set_page_config(
 )
 
 # Title of the app
-st.title("Dry Fish  Detection using YOLOv8")
+st.title("Dry Fish Detection using YOLOv8")
 st.sidebar.title("⚙️ Settings")
 
-# Allow user to select from multiple models
 model_options = {
-    "YOLOv8 Small": "yolov8s.pt",
-    "YOLOv8 Medium": "yolov8m.pt",
-    "Custom Trained (Potholes)": "best.pt"
+    "YOLOv9": "yolov9.pt",
+    "YOLOv10": "yolov10.pt",
+    "YOLOv11": "yolov11.pt",
+    "YOLOv12": "yolov12.pt"
 }
 
+# Model selection
+selected_model_name = st.sidebar.selectbox("Select Model", list(model_options.keys()))
+model_path = model_options[selected_model_name]
 
-model_choice = st.sidebar.selectbox("Select Model Type", list(model_options.keys()))
-model_path = model_options[model_choice]
-
-# Confidence slider
+# Confidence threshold
 confidence_threshold = st.sidebar.slider("Confidence Threshold", 0.0, 1.0, 0.5, 0.05)
 
-# Load the selected model
+# Load model
 @st.cache_resource
 def load_model(path):
     return YOLO(path)
 
 model = load_model(model_path)
-
 st.success(f"✅ Model `{model_path}` loaded successfully.")
 
-# Upload image section
-st.subheader("📷 Upload an Image to Detect Potholes")
+# Image upload section
+st.subheader("📷 Upload an Image to Detect Dry Fish")
 uploaded_file = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
 
-# Function to draw boxes
+# Function to draw bounding boxes
 def draw_boxes(image, results):
     annotated_img = image.copy()
-
     if results and len(results.boxes) > 0:
         for box in results.boxes:
             x1, y1, x2, y2 = map(int, box.xyxy[0])
             conf = float(box.conf[0])
-            label = f"Pothole: {conf:.2f}"
+            label = f"Dry Fish: {conf:.2f}"
 
             cv2.rectangle(annotated_img, (x1, y1), (x2, y2), (0, 0, 255), 2)
             cv2.putText(annotated_img, label, (x1, y1 - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-
     return annotated_img
 
+# Detection
 if uploaded_file is not None:
     image = Image.open(uploaded_file).convert("RGB")
     image_np = np.array(image)
 
-    if st.button("🔍 Detect Potholes"):
+    if st.button("🔍 Detect Dry Fish"):
         with st.spinner("Processing..."):
             results = model(image_np, conf=confidence_threshold)
             result_image = draw_boxes(image_np, results[0])
@@ -79,7 +78,9 @@ if uploaded_file is not None:
             if count > 0:
                 st.success(f"Detected {count} pothole(s).")
             else:
-                st.info("No potholes detected.")
+                st.info("No Dry Fish detected.")
+
+
 
 # About section
 with st.expander("About this App"):
