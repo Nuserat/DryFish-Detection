@@ -1,6 +1,6 @@
 import os
 os.environ["STREAMLIT_DISABLE_WATCHDOG_WARNINGS"] = "true"
-
+os.environ["PYTORCH_NO_WATCH"] = "true" 
 import streamlit as st
 import cv2
 import numpy as np
@@ -73,6 +73,8 @@ def generate_eigencam(model, original_image_np):
     target_layers = get_target_layers(model)
     cam = EigenCAM(model=model, target_layers=target_layers, use_cuda=torch.cuda.is_available())
     grayscale_cam = cam(input_tensor=input_tensor)[0, :, :]
+
+    cam.clear_hooks()  # 🧹 Clean up hooks explicitly
 
     cam_image = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
     return cam_image
