@@ -1,5 +1,7 @@
-import streamlit as st
 import os
+os.environ["STREAMLIT_DISABLE_WATCHDOG_WARNINGS"] = "true"
+
+import streamlit as st
 import cv2
 import numpy as np
 from PIL import Image
@@ -56,7 +58,11 @@ def draw_boxes(image, results):
 
 # Function to select target layers for CAM
 def get_target_layers(model):
-    return [model.model.model[-2], model.model.model[-3], model.model.model[-4]]
+    try:
+        return [model.model.model[-2], model.model.model[-3], model.model.model[-4]]
+    except Exception as e:
+        st.warning("Could not automatically select target layers for CAM. Adjust manually if needed.")
+        return [model.model.model[-2]]
 
 # Function to generate EigenCAM
 @torch.no_grad()
