@@ -1,29 +1,25 @@
-import os
-os.environ["STREAMLIT_DISABLE_WATCHDOG_WARNINGS"] = "true"
-os.environ["PYTORCH_NO_WATCH"] = "true" 
 import streamlit as st
+import os
 import cv2
 import numpy as np
 from PIL import Image
 from ultralytics import YOLO
 import torch
+from torchvision import transforms
+from torchcam.methods import EigenCAM
+from torchcam.utils import overlay_mask
 
-# XAI libraries
-from pytorch_grad_cam import EigenCAM
-from pytorch_grad_cam.utils.image import show_cam_on_image, preprocess_image
-
-# Set page configuration
+# Set Streamlit page config
 st.set_page_config(
-    page_title="Dry Fish Detection",
-    page_icon="\U0001F41F",
+    page_title="Dry Fish Detection with EigenCAM",
+    page_icon="🐟",
     layout="wide"
 )
 
-# Title of the app
-st.title("Dry Fish Detection using YOLOv Models")
+st.title("Dry Fish Detection using YOLOv and EigenCAM")
 st.sidebar.title("⚙️ Settings")
 
-# Model selection dropdown
+# Model selection
 model_options = {
     "YOLOv9": "yolov9.pt",
     "YOLOv10": "yolov10.pt",
@@ -33,17 +29,15 @@ model_options = {
 selected_model_name = st.sidebar.selectbox("Select Model", list(model_options.keys()))
 model_path = model_options[selected_model_name]
 
-# Load YOLO model with caching
+# Load YOLO model
 @st.cache_resource
 def load_model(path):
-    model = YOLO(path)
-    model.eval()
-    return model
+    return YOLO(path)
 
 model = load_model(model_path)
-st.success(f"Model `{model_path}` loaded successfully.")
+st.success(f"✅ Model `{model_path}` loaded successfully.")
 
-# Draw bounding boxes around detections
+# Draw bounding boxes
 def draw_boxes(image, results):
     annotated_img = image.copy()
     if results and len(results.boxes) > 0:
@@ -56,31 +50,32 @@ def draw_boxes(image, results):
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
     return annotated_img
 
-# Function to select target layers for CAM
-def get_target_layers(model):
-    try:
-        return [model.model.model[-2], model.model.model[-3], model.model.model[-4]]
-    except Exception as e:
-        st.warning("Could not automatically select target layers for CAM. Adjust manually if needed.")
-        return [model.model.model[-2]]
+# Get EigenCAM heatmap
+def generate_eigen_cam(image_np, model):
+    # Convert image to tensor
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+    ])
+    input_tensor = transform(image_np).unsqueeze(0)
 
-# Function to generate EigenCAM
-@torch.no_grad()
-def generate_eigencam(model, original_image_np):
-    rgb_img = original_image_np.astype(np.float32) / 255.0
-    input_tensor = preprocess_image(rgb_img, mean=[0, 0, 0], std=[1, 1, 1])
+    # Get backbone for CAM
+    backbone = model.model.model.model  
+    target_layer = backbone[-2]         # Pick one of the last conv layers
 
-    target_layers = get_target_layers(model)
-    cam = EigenCAM(model=model, target_layers=target_layers, use_cuda=torch.cuda.is_available())
-    grayscale_cam = cam(input_tensor=input_tensor)[0, :, :]
+    cam_extractor = EigenCAM(backbone, target_layer=target_layer)
 
-    cam.clear_hooks()  # 🧹 Clean up hooks explicitly
+    with torch.no_grad():
+        _ = backbone(input_tensor)  # Forward pass
 
-    cam_image = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
-    return cam_image
+    cam = cam_extractor(torch.argmax(_[0], dim=1).item())  # Use highest score
 
-# Image upload section
-st.subheader("📤 Upload an Image to Detect Dry Fish")
+    # Convert CAM and overlay
+    cam_resized = cv2.resize(cam[0].numpy(), (image_np.shape[1], image_np.shape[0]))
+    heatmap = overlay_mask(Image.fromarray(image_np), Image.fromarray((cam_resized * 255).astype(np.uint8)), alpha=0.5)
+    return heatmap
+
+# Upload image
+st.subheader("📷 Upload an Image to Detect Dry Fish")
 uploaded_file = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
@@ -88,18 +83,26 @@ if uploaded_file is not None:
     image_np = np.array(image)
 
     if st.button("🔍 Detect Dry Fish"):
-        with st.spinner("Processing..."):
+        with st.spinner("Running detection and generating EigenCAM..."):
             try:
+                # Run detection
                 results = model(image_np)
                 result_image = draw_boxes(image_np, results[0])
 
-                col1, col2 = st.columns(2)
+                # Generate EigenCAM
+                cam_image = generate_eigen_cam(image_np, model)
+
+                # Display results
+                col1, col2, col3 = st.columns(3)
                 with col1:
                     st.subheader("Original Image")
                     st.image(image, use_column_width=True)
                 with col2:
                     st.subheader("Detection Result")
                     st.image(result_image, use_column_width=True)
+                with col3:
+                    st.subheader("EigenCAM Visualization")
+                    st.image(cam_image, use_column_width=True)
 
                 count = len(results[0].boxes)
                 if count > 0:
@@ -107,38 +110,22 @@ if uploaded_file is not None:
                 else:
                     st.info("No Dry Fish detected.")
 
-                # Show EigenCAM
-                eigencam_image = generate_eigencam(model, image_np)
-
-                with st.expander("🧠 Explainability - EigenCAM"):
-                    col3, col4 = st.columns(2)
-                    with col3:
-                        st.subheader("EigenCAM Heatmap")
-                        st.image(eigencam_image, use_column_width=True)
-                    with col4:
-                        st.subheader("Overlay Comparison")
-                        overlay = np.hstack((image_np, eigencam_image))
-                        st.image(overlay, use_column_width=True)
-
             except Exception as e:
-                st.error(f"Error during detection: {e}")
+                st.error(f"❌ Error: {e}")
 
 # About section
 with st.expander("About this App"):
     st.write("""
-    ### Dry Fish Detection App (Image Upload Only)
-    This app uses YOLOv Models trained for detecting dry fish from images.
+    ### Dry Fish Detection with YOLOv8 + EigenCAM
+    This app detects dry fish in images using YOLOv, and visualizes model focus using EigenCAM.
 
     #### Features:
-    - Upload an image for dry fish detection
-    - Bounding boxes with confidence scores
-    - EigenCAM for model explainability
-
-    #### How it works:
-    The model processes the uploaded image and detects regions containing dry fish using pre-trained YOLO weights.
+    - Upload image for dry fish detection
+    - Draws bounding boxes on detection
+    - Overlays heatmap using EigenCAM for model interpretability
 
     #### Use cases:
-    - Quality control in seafood processing
-    - Marine life classification
-    - Research and monitoring in fisheries
+    - Fish quality assessment
+    - Fish categorization and research
+    - Visual explainability in model decisions
     """)
