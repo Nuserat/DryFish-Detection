@@ -4,22 +4,22 @@ import cv2
 import numpy as np
 from PIL import Image
 from ultralytics import YOLO
-import torch
-from torchvision import transforms
-from torchcam.methods import EigenCAM
-from torchcam.utils import overlay_mask
+from yolo_cam.eigen_cam import EigenCAM
+from yolo_cam.utils.image import show_cam_on_image
+import matplotlib.pyplot as plt
 
-# Set Streamlit page config
+# Set page configuration
 st.set_page_config(
-    page_title="Dry Fish Detection with EigenCAM",
+    page_title="Dry Fish Detection with XAI",
     page_icon="🐟",
     layout="wide"
 )
 
-st.title("Dry Fish Detection using YOLOv and EigenCAM")
+# Title of the app
+st.title("Dry Fish Detection using YOLOv Models + EigenCAM")
 st.sidebar.title("⚙️ Settings")
 
-# Model selection
+# Model selection dropdown
 model_options = {
     "YOLOv9": "yolov9.pt",
     "YOLOv10": "yolov10.pt",
@@ -29,7 +29,7 @@ model_options = {
 selected_model_name = st.sidebar.selectbox("Select Model", list(model_options.keys()))
 model_path = model_options[selected_model_name]
 
-# Load YOLO model
+# Load YOLO model with caching
 @st.cache_resource
 def load_model(path):
     return YOLO(path)
@@ -37,7 +37,7 @@ def load_model(path):
 model = load_model(model_path)
 st.success(f"✅ Model `{model_path}` loaded successfully.")
 
-# Draw bounding boxes
+# Draw bounding boxes around detections
 def draw_boxes(image, results):
     annotated_img = image.copy()
     if results and len(results.boxes) > 0:
@@ -45,36 +45,13 @@ def draw_boxes(image, results):
             x1, y1, x2, y2 = map(int, box.xyxy[0])
             conf = float(box.conf[0])
             label = f"Dry Fish: {conf:.2f}"
+
             cv2.rectangle(annotated_img, (x1, y1), (x2, y2), (0, 0, 255), 2)
             cv2.putText(annotated_img, label, (x1, y1 - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
     return annotated_img
 
-# Get EigenCAM heatmap
-def generate_eigen_cam(image_np, model):
-    # Convert image to tensor
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-    ])
-    input_tensor = transform(image_np).unsqueeze(0)
-
-    # Get backbone for CAM
-    backbone = model.model.model.model  
-    target_layer = backbone[-2]         # Pick one of the last conv layers
-
-    cam_extractor = EigenCAM(backbone, target_layer=target_layer)
-
-    with torch.no_grad():
-        _ = backbone(input_tensor)  # Forward pass
-
-    cam = cam_extractor(torch.argmax(_[0], dim=1).item())  # Use highest score
-
-    # Convert CAM and overlay
-    cam_resized = cv2.resize(cam[0].numpy(), (image_np.shape[1], image_np.shape[0]))
-    heatmap = overlay_mask(Image.fromarray(image_np), Image.fromarray((cam_resized * 255).astype(np.uint8)), alpha=0.5)
-    return heatmap
-
-# Upload image
+# Image upload section
 st.subheader("📷 Upload an Image to Detect Dry Fish")
 uploaded_file = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
 
@@ -83,26 +60,18 @@ if uploaded_file is not None:
     image_np = np.array(image)
 
     if st.button("🔍 Detect Dry Fish"):
-        with st.spinner("Running detection and generating EigenCAM..."):
+        with st.spinner("Processing..."):
             try:
-                # Run detection
                 results = model(image_np)
                 result_image = draw_boxes(image_np, results[0])
 
-                # Generate EigenCAM
-                cam_image = generate_eigen_cam(image_np, model)
-
-                # Display results
-                col1, col2, col3 = st.columns(3)
+                col1, col2 = st.columns(2)
                 with col1:
                     st.subheader("Original Image")
                     st.image(image, use_column_width=True)
                 with col2:
                     st.subheader("Detection Result")
                     st.image(result_image, use_column_width=True)
-                with col3:
-                    st.subheader("EigenCAM Visualization")
-                    st.image(cam_image, use_column_width=True)
 
                 count = len(results[0].boxes)
                 if count > 0:
@@ -110,22 +79,39 @@ if uploaded_file is not None:
                 else:
                     st.info("No Dry Fish detected.")
 
+                # ============ 🔍 EigenCAM XAI Visualization ============
+                st.subheader("📊 EigenCAM Visualization")
+                img_resized = cv2.resize(image_np, (640, 640))
+                img_norm = np.float32(img_resized) / 255
+                target_layers = [model.model.model[-2]]
+                cam = EigenCAM(model, target_layers, task='od')
+                grayscale_cam = cam(img_resized)[0, :, :]
+                cam_image = show_cam_on_image(img_norm, grayscale_cam, use_rgb=True)
+
+                st.image(cam_image, caption="EigenCAM Attention Map", use_column_width=True)
+                combined = np.hstack((cv2.cvtColor(img_resized, cv2.COLOR_RGB2BGR), cam_image))
+                st.image(combined, caption="Original + CAM", use_column_width=True)
+                # ========================================================
+
             except Exception as e:
-                st.error(f"❌ Error: {e}")
+                st.error(f"Error during detection: {e}")
 
 # About section
 with st.expander("About this App"):
     st.write("""
-    ### Dry Fish Detection with YOLOv8 + EigenCAM
-    This app detects dry fish in images using YOLOv, and visualizes model focus using EigenCAM.
+    ### Dry Fish Detection App (Image Upload + XAI)
+    This app uses YOLOv Models trained for detecting dry fish from images.
 
     #### Features:
-    - Upload image for dry fish detection
-    - Draws bounding boxes on detection
-    - Overlays heatmap using EigenCAM for model interpretability
+    - Upload an image for dry fish detection
+    - Bounding boxes with confidence scores
+    - XAI visualization using EigenCAM
+
+    #### How it works:
+    The model processes the uploaded image and detects regions containing dry fish. CAMs show model focus areas.
 
     #### Use cases:
-    - Fish quality assessment
-    - Fish categorization and research
-    - Visual explainability in model decisions
+    - Quality control in seafood processing
+    - Marine life classification
+    - Research and monitoring in fisheries
     """)
