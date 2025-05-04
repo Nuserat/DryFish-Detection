@@ -6,4 +6,3 @@ Pillow
 matplotlib
 torch>=1.10.0
 torchvision
-git+https://github.com/rigvedrs/YOLO-V8-CAM.git
