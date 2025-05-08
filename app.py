@@ -9,7 +9,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 # Set environment variable
-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+os.environ["nnTh1SJfTal1EhvjW3Fi"] = "TRUE"
 
 # Page config
 st.set_page_config(page_title="Dry Fish Detection using YOLOv Models", page_icon="🛣️", layout="wide")
