@@ -3,115 +3,81 @@ import os
 import cv2
 import numpy as np
 from PIL import Image
-from ultralytics import YOLO
-from yolo_cam.eigen_cam import EigenCAM
-from yolo_cam.utils.image import show_cam_on_image
-import matplotlib.pyplot as plt
+import logging
 
-# Set page configuration
-st.set_page_config(
-    page_title="Dry Fish Detection with XAI",
-    page_icon="🐟",
-    layout="wide"
-)
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 
-# Title of the app
-st.title("Dry Fish Detection using YOLOv Models + EigenCAM")
-st.sidebar.title("⚙️ Settings")
+# Set environment variable
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
-# Model selection dropdown
+# Page config
+st.set_page_config(page_title="Dry Fish Detection using YOLOv Models", page_icon="🛣️", layout="wide")
+st.title("Dry Fish Detection using Multiple YOLO Models")
+
+# Sidebar for settings
+st.sidebar.title("Settings")
+
+# Model options
 model_options = {
     "YOLOv9": "yolov9.pt",
     "YOLOv10": "yolov10.pt",
     "YOLOv11": "yolov11.pt",
     "YOLOv12": "yolov12.pt"
 }
-selected_model_name = st.sidebar.selectbox("Select Model", list(model_options.keys()))
-model_path = model_options[selected_model_name]
+selected_model_name = st.sidebar.selectbox("Select YOLO Model", list(model_options.keys()))
+confidence_threshold = st.sidebar.slider("Confidence Threshold", 0.0, 1.0, 0.5, 0.05)
 
-# Load YOLO model with caching
 @st.cache_resource
-def load_model(path):
-    return YOLO(path)
+def load_model(model_path):
+    from ultralytics import YOLO
+    return YOLO(model_path)
 
+# Load the selected model
+model_path = model_options[selected_model_name]
 model = load_model(model_path)
-st.success(f"✅ Model `{model_path}` loaded successfully.")
 
-# Draw bounding boxes around detections
-def draw_boxes(image, results):
+# Function to draw circles
+def draw_circles(image, results):
     annotated_img = image.copy()
     if results and len(results.boxes) > 0:
         for box in results.boxes:
             x1, y1, x2, y2 = map(int, box.xyxy[0])
-            conf = float(box.conf[0])
-            label = f"Dry Fish: {conf:.2f}"
+            center_x = (x1 + x2) // 2
+            center_y = (y1 + y2) // 2
+            radius = max((x2 - x1), (y2 - y1)) // 2
 
-            cv2.rectangle(annotated_img, (x1, y1), (x2, y2), (0, 0, 255), 2)
-            cv2.putText(annotated_img, label, (x1, y1 - 10),
+            cv2.circle(annotated_img, (center_x, center_y), radius, (0, 0, 255), 3)
+            conf = float(box.conf[0])
+            label = f"Pothole: {conf:.2f}"
+            cv2.putText(annotated_img, label, (center_x - 10, center_y - radius - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
     return annotated_img
 
-# Image upload section
-st.subheader("📷 Upload an Image to Detect Dry Fish")
-uploaded_file = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
+# Upload and detect
+st.header("Upload Image for Detection")
+uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
 
-if uploaded_file is not None:
+if uploaded_file:
     image = Image.open(uploaded_file).convert("RGB")
     image_np = np.array(image)
 
-    if st.button("🔍 Detect Dry Fish"):
-        with st.spinner("Processing..."):
+    if st.button("Detect Dry Fish"):
+        with st.spinner("Processing image..."):
             try:
-                results = model(image_np)
-                result_image = draw_boxes(image_np, results[0])
-
+                results = model(image_np, conf=confidence_threshold)
+                result_image = draw_circles(image_np, results[0])
                 col1, col2 = st.columns(2)
                 with col1:
                     st.subheader("Original Image")
                     st.image(image, use_column_width=True)
                 with col2:
-                    st.subheader("Detection Result")
+                    st.subheader("Detection Results")
                     st.image(result_image, use_column_width=True)
 
-                count = len(results[0].boxes)
-                if count > 0:
-                    st.success(f"Detected {count} Dry Fish instance(s).")
+                if len(results[0].boxes) > 0:
+                    st.success(f"Detected {len(results[0].boxes)} Dry Fish(s)")
                 else:
-                    st.info("No Dry Fish detected.")
-
-                # ============ 🔍 EigenCAM XAI Visualization ============
-                st.subheader("📊 EigenCAM Visualization")
-                img_resized = cv2.resize(image_np, (640, 640))
-                img_norm = np.float32(img_resized) / 255
-                target_layers = [model.model.model[-2]]
-                cam = EigenCAM(model, target_layers, task='od')
-                grayscale_cam = cam(img_resized)[0, :, :]
-                cam_image = show_cam_on_image(img_norm, grayscale_cam, use_rgb=True)
-
-                st.image(cam_image, caption="EigenCAM Attention Map", use_column_width=True)
-                combined = np.hstack((cv2.cvtColor(img_resized, cv2.COLOR_RGB2BGR), cam_image))
-                st.image(combined, caption="Original + CAM", use_column_width=True)
-                # ========================================================
-
+                    st.info("No Dry Fish detected in this image.")
             except Exception as e:
-                st.error(f"Error during detection: {e}")
-
-# About section
-with st.expander("About this App"):
-    st.write("""
-    ### Dry Fish Detection App (Image Upload + XAI)
-    This app uses YOLOv Models trained for detecting dry fish from images.
-
-    #### Features:
-    - Upload an image for dry fish detection
-    - Bounding boxes with confidence scores
-    - XAI visualization using EigenCAM
-
-    #### How it works:
-    The model processes the uploaded image and detects regions containing dry fish. CAMs show model focus areas.
-
-    #### Use cases:
-    - Quality control in seafood processing
-    - Marine life classification
-    - Research and monitoring in fisheries
-    """)
+                st.error(f"Error processing image: {e}")
