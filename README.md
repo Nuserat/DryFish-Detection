@@ -13,7 +13,7 @@ This repository contains a web-based application for Detecting dry fish images a
 
 ### Clone the Repository
 ```sh
-git clone https://github.com/your-username/dry-fish-classification.git
+git clone (https://capstonec-xai.streamlit.app/)
 cd dry-fish-classification
 ```
 
